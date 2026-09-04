@@ -7,112 +7,103 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <style>
-        body { background: #111; color: #fff; margin: 0; overflow: hidden; }
+        body { background: #111; color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; }
         
-        #setup-screen { padding: 50px; }
+        #setup-screen { padding: 50px; text-align: center; }
         
+        /* Bulletproof label buttons */
+        .btn {
+            display: inline-block;
+            background: #444;
+            color: #fff;
+            padding: 10px 20px;
+            margin: 10px;
+            border: 2px solid #666;
+            cursor: pointer;
+            border-radius: 4px;
+            user-select: none;
+        }
+        .btn:hover { background: #555; border-color: #888; }
+        .btn:active { background: #333; }
+        
+        #start-btn { font-weight: bold; background: #600; border-color: #f00; }
+        #start-btn:disabled { background: #333; border-color: #555; color: #777; cursor: not-allowed; }
+        #start-btn:not(:disabled):hover { background: #800; }
+
+        /* Fullscreen Containers */
         #loader-container {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
             display: none; z-index: 5; background: #050505;
         }
-
         #canvas-container { 
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; 
             opacity: 0; z-index: 1; transition: opacity 1s ease;
         }
         canvas { width: 100%; height: 100%; outline: none; }
 
-        /* Super basic CSS driven buttons */
-        .basic-btn {
-            display: inline-block;
-            background-color: #ddd;
-            color: #000;
-            padding: 8px 16px;
-            margin: 5px;
-            border: 1px solid #999;
-            cursor: pointer;
-            font-family: sans-serif;
-            font-size: 14px;
-        }
-        .basic-btn:hover {
-            background-color: #eee;
-        }
-
         /* Draggable Log Window */
         #log-window {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 400px;
-            height: 300px;
-            background: rgba(0, 0, 0, 0.85);
-            border: 1px solid #555;
+            position: absolute; top: 20px; left: 20px;
+            width: 450px; height: 350px;
+            background: rgba(10, 10, 10, 0.9);
+            border: 1px solid #444;
             z-index: 20;
-            display: none; /* Hidden until engine actually launches */
+            display: none; /* Shows up at boot */
             flex-direction: column;
-            resize: both;
-            overflow: hidden;
-            box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            resize: both; overflow: hidden;
+            box-shadow: 2px 2px 15px rgba(0,0,0,0.8);
         }
         #log-header {
-            background: #333;
-            padding: 5px 10px;
-            cursor: move;
-            font-family: sans-serif;
-            font-size: 14px;
-            user-select: none;
-            border-bottom: 1px solid #555;
+            background: #222; padding: 8px; cursor: move;
+            font-size: 14px; border-bottom: 1px solid #555;
         }
         #log-content {
-            flex-grow: 1;
-            padding: 10px;
-            font-family: monospace;
-            font-size: 12px;
-            overflow-y: auto;
-            color: #ddd;
-            word-wrap: break-word;
+            flex-grow: 1; padding: 10px; font-family: monospace; font-size: 12px;
+            overflow-y: auto; color: #ccc; word-wrap: break-word;
         }
+        .err-text { color: #ff5555; }
     </style>
 </head>
 <body>
 
+    <!-- UI Setup -->
     <div id="setup-screen">
-        <h2>Load id Tech 3 Game Files</h2>
-        <p>Select a whole game folder OR individual files.</p>
+        <h2>id Tech 3 Engine</h2>
+        <p>Select your files to begin.</p>
         
-        <!-- Hidden file inputs -->
-        <input type="file" id="file-upload" multiple style="display:none;">
-        <input type="file" id="folder-upload" webkitdirectory directory multiple style="display:none;">
+        <!-- Hidden Inputs -->
+        <input type="file" id="file-in" multiple style="display:none;">
+        <input type="file" id="folder-in" webkitdirectory directory multiple style="display:none;">
         
-        <!-- CSS driven labels acting as buttons -->
-        <label class="basic-btn" for="file-upload">Choose Files</label>
-        <label class="basic-btn" for="folder-upload">Choose Folder</label>
+        <!-- Label Buttons linked to inputs -->
+        <label for="file-in" class="btn">1. Choose Loose Files</label>
+        <label for="folder-in" class="btn">1. Choose Whole Folder</label>
         
         <br><br>
-        <button type="button" id="start-btn" disabled>Waiting for files...</button>
+        <button type="button" id="start-btn" class="btn" disabled>2. Waiting for files...</button>
     </div>
 
-    <!-- Draggable Engine Console -->
+    <!-- Draggable Monitor -->
     <div id="log-window">
-        <div id="log-header">Engine Console (Drag me)</div>
+        <div id="log-header">Engine Output (Drag & Resize)</div>
         <div id="log-content"></div>
     </div>
 
-    <!-- Three.js Loading Screen -->
+    <!-- 3D Loader -->
     <div id="loader-container"></div>
 
-    <!-- Game Canvas -->
+    <!-- Game -->
     <div id="canvas-container">
         <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
     </div>
 
     <script>
+        // --- 1. Engine & Console Setup ---
         const logContent = document.getElementById('log-content');
         
         var Module = {
             noInitialRun: true, 
             canvas: document.getElementById('canvas'),
-            
             print: function(text) {
                 if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
                 console.log(text);
@@ -122,161 +113,140 @@
             printErr: function(text) {
                 if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
                 console.error(text);
-                logContent.innerHTML += '<span style="color:#ff5555;">' + text + '</span><br>';
+                logContent.innerHTML += `<span class="err-text">${text}</span><br>`;
                 logContent.scrollTop = logContent.scrollHeight;
-            },
-            onRuntimeInitialized: function() {
-                Module.print("WASM Engine Ready.");
             }
         };
 
-        // --- Drag Logic for Console Window ---
+        // --- 2. Draggable Window Logic ---
         const logWindow = document.getElementById('log-window');
         const logHeader = document.getElementById('log-header');
         let isDragging = false, startX, startY, startLeft, startTop;
 
         logHeader.addEventListener('mousedown', (e) => {
             isDragging = true;
-            startX = e.clientX;
-            startY = e.clientY;
-            startLeft = logWindow.offsetLeft;
-            startTop = logWindow.offsetTop;
+            startX = e.clientX; startY = e.clientY;
+            startLeft = logWindow.offsetLeft; startTop = logWindow.offsetTop;
         });
         document.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
-            logWindow.style.left = startLeft + (e.clientX - startX) + 'px';
-            logWindow.style.top = startTop + (e.clientY - startY) + 'px';
+            logWindow.style.left = (startLeft + e.clientX - startX) + 'px';
+            logWindow.style.top = (startTop + e.clientY - startY) + 'px';
         });
         document.addEventListener('mouseup', () => { isDragging = false; });
 
-        // --- File Upload Logic ---
-        const setupScreen = document.getElementById('setup-screen');
-        const loaderContainer = document.getElementById('loader-container');
-        const canvasContainer = document.getElementById('canvas-container');
+        // --- 3. File Selection Logic ---
         const startBtn = document.getElementById('start-btn');
         let uploadedFiles = [];
 
-        // Handle the actual file selection
-        function handleFileSelection(e) {
+        function handleFiles(e) {
             if (e.target.files.length > 0) {
                 uploadedFiles = e.target.files;
                 startBtn.disabled = false;
-                startBtn.textContent = `Start Engine with ${uploadedFiles.length} file(s)`;
+                startBtn.textContent = `2. Launch Engine (${uploadedFiles.length} files)`;
             }
         }
+        document.getElementById('file-in').addEventListener('change', handleFiles);
+        document.getElementById('folder-in').addEventListener('change', handleFiles);
 
-        document.getElementById('file-upload').addEventListener('change', handleFileSelection);
-        document.getElementById('folder-upload').addEventListener('change', handleFileSelection);
-
-        // --- Three.js Loader Setup ---
+        // --- 4. Three.js Loading Screen ---
         let scene, camera, renderer, coin;
 
-        function init3DLoader() {
+        function init3D() {
+            const container = document.getElementById('loader-container');
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             
             renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            loaderContainer.appendChild(renderer.domElement);
+            container.appendChild(renderer.domElement);
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(5, 5, 5);
-            scene.add(directionalLight);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const light = new THREE.DirectionalLight(0xffffff, 0.8);
+            light.position.set(5, 5, 5);
+            scene.add(light);
 
-            const geometry = new THREE.CylinderGeometry(2, 2, 0.5, 64);
-            const textureLoader = new THREE.TextureLoader();
-            const logoTexture = textureLoader.load('Id_Tech_3_logo.png');
+            const geo = new THREE.CylinderGeometry(2, 2, 0.5, 64);
+            const texLoader = new THREE.TextureLoader();
+            const logoTex = texLoader.load('Id_Tech_3_logo.png');
             
-            logoTexture.center.set(0.5, 0.5);
-            logoTexture.rotation = -Math.PI / 2;
+            logoTex.center.set(0.5, 0.5);
+            logoTex.rotation = -Math.PI / 2;
             
-            const edgeMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.2 });
-            const faceMaterial = new THREE.MeshStandardMaterial({ map: logoTexture });
-            const materials = [edgeMaterial, faceMaterial, faceMaterial];
-
-            coin = new THREE.Mesh(geometry, materials);
+            const edgeMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.2 });
+            const faceMat = new THREE.MeshStandardMaterial({ map: logoTex });
+            
+            coin = new THREE.Mesh(geo, [edgeMat, faceMat, faceMat]);
             coin.rotation.x = Math.PI / 2;
             scene.add(coin);
-
             camera.position.z = 6;
-            animate3D();
+
+            function animate() {
+                if (!coin) return;
+                requestAnimationFrame(animate);
+                coin.rotation.z += 0.05; 
+                renderer.render(scene, camera);
+            }
+            animate();
         }
 
-        function animate3D() {
-            if (!coin) return;
-            requestAnimationFrame(animate3D);
-            coin.rotation.z += 0.05; 
-            renderer.render(scene, camera);
-        }
-
-        // --- Main Launch Logic ---
+        // --- 5. Boot Sequence ---
         startBtn.addEventListener('click', async () => {
-            setupScreen.style.display = 'none';
-            loaderContainer.style.display = 'block';
-            
-            init3DLoader();
+            // Swap UI
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('loader-container').style.display = 'block';
+            init3D();
 
+            // Give UI a moment to render 3D before freezing with heavy file operations
             setTimeout(async () => {
-                await loadFilesIntoVFS();
                 
+                // Write files to Emscripten Memory
+                for (let i = 0; i < uploadedFiles.length; i++) {
+                    const file = uploadedFiles[i];
+                    const path = file.webkitRelativePath || ('baseq3/' + file.name);
+                    const parts = path.split('/');
+                    const fileName = parts.pop();
+                    
+                    let dir = '/';
+                    for(let part of parts) {
+                        dir += part + '/';
+                        try { FS.mkdir(dir); } catch(e) {}
+                    }
+
+                    const buffer = await file.arrayBuffer();
+                    FS.writeFile('/' + path, new Uint8Array(buffer));
+                    Module.print(`[VFS] Loaded: /${path}`);
+                }
+
+                // Transition to Game
                 setTimeout(() => {
-                    loaderContainer.style.opacity = '0';
-                    canvasContainer.style.opacity = '1';
+                    document.getElementById('loader-container').style.opacity = '0';
+                    document.getElementById('canvas-container').style.opacity = '1';
+                    logWindow.style.display = 'flex'; // Show Monitor
                     
                     setTimeout(() => {
-                        loaderContainer.style.display = 'none';
+                        document.getElementById('loader-container').style.display = 'none';
                         if(renderer) renderer.dispose();
                     }, 1000);
 
-                    launchEngine();
-                }, 5000); 
+                    // Launch!
+                    let rootDir = uploadedFiles[0].webkitRelativePath ? uploadedFiles[0].webkitRelativePath.split('/')[0] : 'baseq3';
+                    Module.print(`[ENGINE] Booting from: /${rootDir}`);
+                    
+                    Module.callMain([
+                        '+set', 'fs_basepath', '/' + rootDir,
+                        '+set', 'vm_game', '2', 
+                        '+set', 'vm_cgame', '2',
+                        '+set', 'vm_ui', '2'
+                    ]);
+
+                }, 4000); // Guarantees the 3D spinner is seen for a few seconds
 
             }, 500);
         });
-
-        async function loadFilesIntoVFS() {
-            for (let i = 0; i < uploadedFiles.length; i++) {
-                const file = uploadedFiles[i];
-                
-                // If individual files were uploaded, force them into a baseq3 folder
-                const path = file.webkitRelativePath || ('baseq3/' + file.name);
-                const pathParts = path.split('/');
-                const fileName = pathParts.pop(); 
-                
-                let currentPath = '/';
-                for(let part of pathParts) {
-                    currentPath += part + '/';
-                    try { FS.mkdir(currentPath); } catch(e) { }
-                }
-
-                const arrayBuffer = await file.arrayBuffer();
-                FS.writeFile('/' + path, new Uint8Array(arrayBuffer));
-                Module.print(`Loaded into VFS: /${path}`);
-            }
-        }
-
-        function launchEngine() {
-            // Show the log window exactly when the engine starts loading
-            logWindow.style.display = 'flex'; 
-            
-            let rootFolder = 'baseq3';
-            if (uploadedFiles[0].webkitRelativePath) {
-                rootFolder = uploadedFiles[0].webkitRelativePath.split('/')[0];
-            }
-
-            Module.print(`Booting engine from root folder: ${rootFolder}...`);
-            
-            Module.callMain([
-                '+set', 'fs_basepath', '/' + rootFolder,
-                '+set', 'vm_game', '2', 
-                '+set', 'vm_cgame', '2',
-                '+set', 'vm_ui', '2',
-            ]);
-        }
     </script>
     
+    <!-- Load Engine -->
     <script src="ioquake3.js"></script>
 </body>
 </html>
