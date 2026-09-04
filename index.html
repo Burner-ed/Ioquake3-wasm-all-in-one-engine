@@ -68,12 +68,12 @@
         <input type="file" id="file-upload" multiple style="display:none;">
         <input type="file" id="folder-upload" webkitdirectory directory multiple style="display:none;">
         
-        <!-- Visible Buttons that trigger the hidden inputs -->
-        <button onclick="document.getElementById('file-upload').click()">Choose Files</button>
-        <button onclick="document.getElementById('folder-upload').click()">Choose Folder</button>
+        <!-- Visible Buttons that trigger the hidden inputs via JS -->
+        <button type="button" id="btn-choose-files">Choose Files</button>
+        <button type="button" id="btn-choose-folder">Choose Folder</button>
         
         <br><br>
-        <button id="start-btn" disabled>Waiting for files...</button>
+        <button type="button" id="start-btn" disabled>Waiting for files...</button>
     </div>
 
     <!-- Draggable Engine Console -->
@@ -140,6 +140,16 @@
         const startBtn = document.getElementById('start-btn');
         let uploadedFiles = [];
 
+        // Button Click Listeners (Fix for browsers blocking inline onclick)
+        document.getElementById('btn-choose-files').addEventListener('click', () => {
+            document.getElementById('file-upload').click();
+        });
+        
+        document.getElementById('btn-choose-folder').addEventListener('click', () => {
+            document.getElementById('folder-upload').click();
+        });
+
+        // Handle the actual file selection
         function handleFileSelection(e) {
             if (e.target.files.length > 0) {
                 uploadedFiles = e.target.files;
