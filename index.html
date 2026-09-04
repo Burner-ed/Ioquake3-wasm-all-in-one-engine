@@ -7,7 +7,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <style>
-        /* Minimal CSS just for layout and the draggable log window */
         body { background: #111; color: #fff; margin: 0; overflow: hidden; }
         
         #setup-screen { padding: 50px; }
@@ -23,7 +22,7 @@
         }
         canvas { width: 100%; height: 100%; outline: none; }
 
-        /* Draggable Log Window Styling */
+        /* Draggable Log Window */
         #log-window {
             position: absolute;
             top: 20px;
@@ -33,8 +32,7 @@
             background: rgba(0, 0, 0, 0.85);
             border: 1px solid #555;
             z-index: 20;
-            display: none; /* Shows up when engine starts */
-            display: flex;
+            display: none; /* Hidden until engine actually launches */
             flex-direction: column;
             resize: both;
             overflow: hidden;
@@ -62,13 +60,20 @@
 </head>
 <body>
 
-    <!-- Barebones Setup UI -->
     <div id="setup-screen">
-        <h2>Load id Tech 3 Game Folder</h2>
-        <p>Select your root game folder (the one containing baseq3 or your mod folder).</p>
-        <input type="file" id="folder-upload" webkitdirectory directory multiple>
+        <h2>Load id Tech 3 Game Files</h2>
+        <p>Select a whole game folder OR individual files.</p>
+        
+        <!-- Hidden file inputs -->
+        <input type="file" id="file-upload" multiple style="display:none;">
+        <input type="file" id="folder-upload" webkitdirectory directory multiple style="display:none;">
+        
+        <!-- Visible Buttons that trigger the hidden inputs -->
+        <button onclick="document.getElementById('file-upload').click()">Choose Files</button>
+        <button onclick="document.getElementById('folder-upload').click()">Choose Folder</button>
+        
         <br><br>
-        <button id="start-btn" disabled>Waiting for game folder...</button>
+        <button id="start-btn" disabled>Waiting for files...</button>
     </div>
 
     <!-- Draggable Engine Console -->
@@ -88,19 +93,16 @@
     <script>
         const logContent = document.getElementById('log-content');
         
-        // --- Emscripten Module Setup ---
         var Module = {
             noInitialRun: true, 
             canvas: document.getElementById('canvas'),
             
-            // Route standard output to our draggable window
             print: function(text) {
                 if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
                 console.log(text);
                 logContent.innerHTML += text + '<br>';
                 logContent.scrollTop = logContent.scrollHeight;
             },
-            // Route error output to our draggable window (in red)
             printErr: function(text) {
                 if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
                 console.error(text);
@@ -135,17 +137,19 @@
         const setupScreen = document.getElementById('setup-screen');
         const loaderContainer = document.getElementById('loader-container');
         const canvasContainer = document.getElementById('canvas-container');
-        const fileInput = document.getElementById('folder-upload');
         const startBtn = document.getElementById('start-btn');
         let uploadedFiles = [];
 
-        fileInput.addEventListener('change', (e) => {
+        function handleFileSelection(e) {
             if (e.target.files.length > 0) {
                 uploadedFiles = e.target.files;
                 startBtn.disabled = false;
                 startBtn.textContent = `Start Engine with ${uploadedFiles.length} file(s)`;
             }
-        });
+        }
+
+        document.getElementById('file-upload').addEventListener('change', handleFileSelection);
+        document.getElementById('folder-upload').addEventListener('change', handleFileSelection);
 
         // --- Three.js Loader Setup ---
         let scene, camera, renderer, coin;
@@ -168,9 +172,8 @@
             const textureLoader = new THREE.TextureLoader();
             const logoTexture = textureLoader.load('Id_Tech_3_logo.png');
             
-            // Fix orientation of the texture on the cylinder caps
             logoTexture.center.set(0.5, 0.5);
-            logoTexture.rotation = -Math.PI / 2; // Adjust to Math.PI or Math.PI / 2 if still off
+            logoTexture.rotation = -Math.PI / 2;
             
             const edgeMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.2 });
             const faceMaterial = new THREE.MeshStandardMaterial({ map: logoTexture });
@@ -195,7 +198,6 @@
         startBtn.addEventListener('click', async () => {
             setupScreen.style.display = 'none';
             loaderContainer.style.display = 'block';
-            logWindow.style.display = 'flex'; // Show the console window
             
             init3DLoader();
 
@@ -220,7 +222,10 @@
         async function loadFilesIntoVFS() {
             for (let i = 0; i < uploadedFiles.length; i++) {
                 const file = uploadedFiles[i];
-                const pathParts = file.webkitRelativePath.split('/');
+                
+                // If individual files were uploaded, force them into a baseq3 folder
+                const path = file.webkitRelativePath || ('baseq3/' + file.name);
+                const pathParts = path.split('/');
                 const fileName = pathParts.pop(); 
                 
                 let currentPath = '/';
@@ -230,13 +235,20 @@
                 }
 
                 const arrayBuffer = await file.arrayBuffer();
-                FS.writeFile('/' + file.webkitRelativePath, new Uint8Array(arrayBuffer));
-                Module.print(`Loaded into VFS: /${file.webkitRelativePath}`);
+                FS.writeFile('/' + path, new Uint8Array(arrayBuffer));
+                Module.print(`Loaded into VFS: /${path}`);
             }
         }
 
         function launchEngine() {
-            const rootFolder = uploadedFiles[0].webkitRelativePath.split('/')[0];
+            // Show the log window exactly when the engine starts loading
+            logWindow.style.display = 'flex'; 
+            
+            let rootFolder = 'baseq3';
+            if (uploadedFiles[0].webkitRelativePath) {
+                rootFolder = uploadedFiles[0].webkitRelativePath.split('/')[0];
+            }
+
             Module.print(`Booting engine from root folder: ${rootFolder}...`);
             
             Module.callMain([
