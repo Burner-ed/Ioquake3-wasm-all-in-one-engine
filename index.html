@@ -3,40 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <title>Ioquake3 WASM Engine</title>
-    <!-- Link your favicon.ico here -->
     <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
     <style>
-        body { background: #111; color: #fff; font-family: sans-serif; text-align: center; margin: 0; }
-        #setup-screen { padding: 100px 20px; }
-        #canvas-container { display: none; width: 100vw; height: 100vh; }
+        body { 
+            background: #050505; 
+            color: #eeeeee; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            text-align: center; 
+            margin: 0; 
+            overflow: hidden; /* Prevent scrolling during 3D scene */
+        }
+        
+        /* Modern Setup Screen */
+        #setup-screen { 
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 40px; 
+            background: #111;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            z-index: 10;
+            transition: opacity 0.5s ease;
+        }
+
+        h2 { margin-top: 0; color: #ff5555; }
+        p { color: #aaaaaa; margin-bottom: 25px; }
+
+        /* Custom File Input Styling */
+        input[type="file"] { display: none; }
+        .custom-file-upload {
+            display: inline-block;
+            padding: 12px 24px;
+            cursor: pointer;
+            background: #222;
+            border: 2px dashed #444;
+            border-radius: 6px;
+            color: #ddd;
+            transition: 0.3s;
+        }
+        .custom-file-upload:hover { background: #333; border-color: #ff5555; }
+        
+        button { 
+            padding: 12px 24px; 
+            font-size: 16px; 
+            font-weight: bold;
+            margin-top: 20px; 
+            cursor: pointer; 
+            background: #ff5555;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            transition: background 0.3s;
+        }
+        button:disabled { background: #444; cursor: not-allowed; color: #888; }
+        button:hover:not(:disabled) { background: #ff3333; }
+
+        /* 3D Loader Container */
+        #loader-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: none; /* Hidden until start */
+            z-index: 5;
+            background: #050505;
+            transition: opacity 1s ease;
+        }
+
+        /* Quake Canvas */
+        #canvas-container { 
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw; 
+            height: 100vh; 
+            opacity: 0; /* Hidden initially, faded in */
+            z-index: 1;
+            transition: opacity 1s ease;
+        }
         canvas { width: 100%; height: 100%; outline: none; }
-        button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
     </style>
 </head>
 <body>
 
     <div id="setup-screen">
-        <h2>Load Quake 3 Local Files</h2>
-        <p>Select your baseq3 .pk3 files (pak0.pk3, etc.) to play directly in the browser.</p>
-        <input type="file" id="pk3-upload" multiple accept=".pk3">
+        <h2>id Tech 3 WASM Engine</h2>
+        <p>Select your root game directory containing mods, configs, and assets.</p>
+        <label class="custom-file-upload">
+            Choose Game Folder
+            <input type="file" id="folder-upload" webkitdirectory directory multiple>
+        </label>
         <br>
-        <button id="start-btn" disabled>Waiting for files...</button>
+        <button id="start-btn" disabled>Waiting for game folder...</button>
     </div>
+
+    <div id="loader-container"></div>
 
     <div id="canvas-container">
         <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
     </div>
 
     <script>
+        // --- Emscripten Module Setup ---
         var Module = {
             noInitialRun: true, 
             canvas: document.getElementById('canvas'),
             onRuntimeInitialized: function() {
-                console.log("WASM Engine Ready. Waiting for user files.");
+                console.log("WASM Engine Ready.");
             }
         };
 
-        const fileInput = document.getElementById('pk3-upload');
+        const setupScreen = document.getElementById('setup-screen');
+        const loaderContainer = document.getElementById('loader-container');
+        const canvasContainer = document.getElementById('canvas-container');
+        const fileInput = document.getElementById('folder-upload');
         const startBtn = document.getElementById('start-btn');
         let uploadedFiles = [];
 
@@ -44,36 +129,122 @@
             if (e.target.files.length > 0) {
                 uploadedFiles = e.target.files;
                 startBtn.disabled = false;
-                startBtn.textContent = `Start Engine with ${uploadedFiles.length} file(s)`;
+                startBtn.textContent = `Launch Engine (${uploadedFiles.length} files)`;
             }
         });
 
+        // --- Three.js Loader Setup ---
+        let scene, camera, renderer, coin;
+
+        function init3DLoader() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            loaderContainer.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+
+            // Geometry: Short cylinder
+            const geometry = new THREE.CylinderGeometry(2, 2, 0.5, 64);
+            
+            // Materials
+            const textureLoader = new THREE.TextureLoader();
+            // Load the logo for the top and bottom faces
+            const logoTexture = textureLoader.load('Id_Tech_3_logo.png');
+            
+            const edgeMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.2 });
+            const faceMaterial = new THREE.MeshStandardMaterial({ map: logoTexture });
+
+            // Apply materials: [edge, top, bottom]
+            const materials = [edgeMaterial, faceMaterial, faceMaterial];
+
+            coin = new THREE.Mesh(geometry, materials);
+            
+            // Rotate so we can see the face head-on initially
+            coin.rotation.x = Math.PI / 2;
+            scene.add(coin);
+
+            camera.position.z = 6;
+
+            animate3D();
+        }
+
+        function animate3D() {
+            if (!coin) return;
+            requestAnimationFrame(animate3D);
+            // Spin on the Y axis (relative to the coin's orientation)
+            coin.rotation.z += 0.05; 
+            renderer.render(scene, camera);
+        }
+
+        // --- Main Launch Logic ---
         startBtn.addEventListener('click', async () => {
-            document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('canvas-container').style.display = 'block';
+            // Hide Setup, Show Loader
+            setupScreen.style.opacity = '0';
+            setTimeout(() => setupScreen.style.display = 'none', 500);
+            
+            loaderContainer.style.display = 'block';
+            init3DLoader();
 
-            try {
-                FS.mkdir('/baseq3');
-            } catch (e) { }
+            // Give the UI a moment to render the 3D scene before freezing the thread with file IO
+            setTimeout(async () => {
+                await loadFilesIntoVFS();
+                
+                // After 5 seconds (or file loading, whichever is longer), fade out loader
+                setTimeout(() => {
+                    loaderContainer.style.opacity = '0';
+                    canvasContainer.style.opacity = '1';
+                    
+                    setTimeout(() => {
+                        loaderContainer.style.display = 'none';
+                        // Clean up WebGL context for ThreeJS so it doesn't conflict with Quake
+                        if(renderer) renderer.dispose();
+                    }, 1000);
 
+                    // Launch the Engine
+                    launchEngine();
+                }, 5000); 
+
+            }, 500);
+        });
+
+        async function loadFilesIntoVFS() {
             for (let i = 0; i < uploadedFiles.length; i++) {
                 const file = uploadedFiles[i];
-                const arrayBuffer = await file.arrayBuffer();
-                const uint8Array = new Uint8Array(arrayBuffer);
+                const pathParts = file.webkitRelativePath.split('/');
+                const fileName = pathParts.pop(); 
                 
-                FS.writeFile('/baseq3/' + file.name, uint8Array);
-                console.log(`Loaded: ${file.name} into VFS`);
-            }
+                let currentPath = '/';
+                for(let part of pathParts) {
+                    currentPath += part + '/';
+                    try { FS.mkdir(currentPath); } catch(e) { }
+                }
 
+                const arrayBuffer = await file.arrayBuffer();
+                FS.writeFile('/' + file.webkitRelativePath, new Uint8Array(arrayBuffer));
+                console.log(`Loaded: /${file.webkitRelativePath}`);
+            }
+        }
+
+        function launchEngine() {
+            const rootFolder = uploadedFiles[0].webkitRelativePath.split('/')[0];
+            
             Module.callMain([
-                '+set', 'fs_basepath', '/', 
-                '+set', 'fs_game', 'baseq3',
-                '+map', 'q3dm1' 
+                '+set', 'fs_basepath', '/' + rootFolder,
+                '+set', 'vm_game', '2', 
+                '+set', 'vm_cgame', '2',
+                '+set', 'vm_ui', '2',
             ]);
-        });
+        }
     </script>
     
-    <!-- Load the WASM engine matching your repo files -->
     <script src="ioquake3.js"></script>
 </body>
 </html>
