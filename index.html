@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quake 3 WebAssembly</title>
+    <style>
+        body { background: #111; color: #fff; font-family: sans-serif; text-align: center; margin: 0; }
+        #setup-screen { padding: 100px 20px; }
+        #canvas-container { display: none; width: 100vw; height: 100vh; }
+        canvas { width: 100%; height: 100%; outline: none; }
+        button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. The Setup UI -->
+    <div id="setup-screen">
+        <h2>Load Quake 3 Local Files</h2>
+        <p>Select your baseq3 .pk3 files (pak0.pk3, etc.) to play directly in the browser.</p>
+        <input type="file" id="pk3-upload" multiple accept=".pk3">
+        <br>
+        <button id="start-btn" disabled>Waiting for files...</button>
+    </div>
+
+    <!-- 2. The Game Viewport -->
+    <div id="canvas-container">
+        <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    </div>
+
+    <!-- 3. Engine Initialization Script -->
+    <script>
+        // Configure Emscripten before the engine loads
+        var Module = {
+            noInitialRun: true, // STOP the engine from booting until we have the files
+            canvas: document.getElementById('canvas'),
+            onRuntimeInitialized: function() {
+                console.log("WASM Engine Ready. Waiting for user files.");
+            }
+        };
+
+        const fileInput = document.getElementById('pk3-upload');
+        const startBtn = document.getElementById('start-btn');
+        let uploadedFiles = [];
+
+        // Enable the start button once files are selected
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadedFiles = e.target.files;
+                startBtn.disabled = false;
+                startBtn.textContent = `Start Engine with ${uploadedFiles.length} file(s)`;
+            }
+        });
+
+        // Handle the file loading and boot sequence
+        startBtn.addEventListener('click', async () => {
+            // Swap UI
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('canvas-container').style.display = 'block';
+
+            // Create the baseq3 directory in Emscripten's Virtual File System (VFS)
+            try {
+                FS.mkdir('/baseq3');
+            } catch (e) { /* Ignore if directory already exists */ }
+
+            // Read the user's files and write them into the WASM memory
+            for (let i = 0; i < uploadedFiles.length; i++) {
+                const file = uploadedFiles[i];
+                const arrayBuffer = await file.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+                
+                // Write directly to Emscripten's virtual file system
+                FS.writeFile('/baseq3/' + file.name, uint8Array);
+                console.log(`Loaded: ${file.name} into VFS`);
+            }
+
+            // Boot the engine into a local match!
+            // fs_basepath '/' tells the engine to look in our root VFS for '/baseq3'
+            Module.callMain([
+                '+set', 'fs_basepath', '/', 
+                '+set', 'fs_game', 'baseq3',
+                '+map', 'q3dm1' // Instantly load a local map with bots
+            ]);
+        });
+    </script>
+
+    <!-- 4. Load the WASM engine -->
+    <!-- Make sure ioq3.js and ioq3.wasm are in the same folder -->
+    <script src="ioq3.js"></script>
+</body>
+</html>
